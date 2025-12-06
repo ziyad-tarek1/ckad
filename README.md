@@ -591,6 +591,10 @@ kubectl patch deployment <name> -p '{"spec":{"strategy":{"rollingUpdate":{"maxSu
 
 # LimitRange
 kubectl set resources deployment/<name> --requests=memory=200Mi --limits=memory=320Mi
+
+# CronJob and Job
+kubectl create cronjob <name> --image=<image> --schedule="*/30 * * * *" -- <command>
+kubectl create job <name> --from=cronjob/<cronjob-name>
 ```
 
 ---
@@ -635,3 +639,102 @@ kubectl describe pod <pod-name> -n <namespace>
 # Check that resources are set correctly
 kubectl get deployment mem-consume -n <namespace> -o jsonpath='{.spec.template.spec.containers[0].resources}'
 ```
+
+---
+
+## Question 15: Create CronJob and Manual Job
+
+**Scenario:** Create a CronJob that runs a grep command. The CronJob should run every 30 minutes, keep 98 successful runs and 192 failed runs, run for 8 seconds, and have restart policy Never. Then create a Job from this CronJob.
+
+**Solution:**
+```bash
+# Create the CronJob
+cat <<EOF | kubectl apply -f -
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: grep-cronjob
+  namespace: <namespace>
+spec:
+  schedule: "*/30 * * * *"  # Every 30 minutes
+  successfulJobsHistoryLimit: 98
+  failedJobsHistoryLimit: 192
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 8  # Run for 8 seconds
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: grep-container
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - grep <pattern> <file>  # Replace with actual grep command
+EOF
+
+# Verify CronJob creation
+kubectl get cronjob grep-cronjob -n <namespace>
+kubectl describe cronjob grep-cronjob -n <namespace>
+
+# Create a Job from the CronJob manually
+kubectl create job --from=cronjob/grep-cronjob grep-job-manual -n <namespace>
+
+
+
+# Verify Job creation
+kubectl get job -n <namespace>
+kubectl describe job grep-job-manual -n <namespace>
+kubectl get pods -n <namespace> -l job-name=grep-job-manual
+```
+
+---
+
+## Question 16: Fix Deprecated Deployment API Version
+
+**Scenario:** Fix the deployment issues localted at /home/candtent/deployemt.yaml. The deployment manifest is using an old deprecated apiVersion.
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: <deployment-name>
+  namespace: <namespace>
+spec:
+  replicas: <number>
+  template:
+    metadata:
+      labels:
+        app: <app-name>  
+    spec:
+      containers:
+      - name: <container-name>
+        image: <image>
+
+```
+**Solution:**
+
+**Corrected YAML:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <deployment-name>
+  namespace: <namespace>
+spec:
+  replicas: <number>
+  selector:
+    matchLabels:
+      app: <app-name>  # Must match template labels
+  template:
+    metadata:
+      labels:
+        app: <app-name>  # Must match selector
+    spec:
+      containers:
+      - name: <container-name>
+        image: <image>
+```
+
+
